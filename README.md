@@ -1,16 +1,17 @@
-# Customer Support Backend
+# Customer Support Backend - Socket.IO
 
-Ứng dụng backend hỗ trợ khách hàng với tính năng chat messaging hoàn chỉnh giữa khách hàng và manager.
+Ứng dụng backend hỗ trợ khách hàng với tính năng **real-time chat** sử dụng Socket.IO giữa khách hàng và manager.
 
 ## 📋 Mô tả
 
-Project này cung cấp **HTTP Server** với các API hoàn chỉnh để:
-- ✅ **Đăng nhập**: Simple JWT authentication cho customer và manager
-- ✅ **Gửi tin nhắn**: Customer gửi tin nhắn đến manager
-- ✅ **Lấy tin nhắn**: Lấy lịch sử chat theo user ID
-- ✅ **Quản lý khách hàng**: Manager xem danh sách customers
-- ✅ **CORS Support**: Kết nối với Android app qua emulator
-- ✅ **Real-time Logging**: Server logs mọi hoạt động
+Project này cung cấp **Socket.IO Server** với real-time communication để:
+- ✅ **Real-time Authentication**: Socket.IO based login cho customer và manager
+- ✅ **Instant Messaging**: Tin nhắn được gửi và nhận ngay lập tức
+- ✅ **Bidirectional Communication**: Full-duplex real-time communication
+- ✅ **Message History**: Lấy lịch sử chat theo user ID
+- ✅ **Online Status**: Theo dõi trạng thái online/offline của users
+- ✅ **Event-driven Architecture**: Sử dụng events thay vì HTTP requests
+- ✅ **Real-time Notifications**: Push notifications cho tin nhắn mới
 
 ## 🛠️ Yêu cầu hệ thống
 
@@ -27,59 +28,82 @@ mvn -version
 
 ## 📦 Thư viện sử dụng
 
-Project này sử dụng **Java thuần** không cần thư viện bên ngoài:
-- **Java HTTP Server**: `com.sun.net.httpserver` (built-in)
+Project này sử dụng **Socket.IO** cho real-time communication:
+- **Socket.IO Server**: `netty-socketio` cho Java
+- **Jackson**: JSON processing
+- **Netty**: High-performance network framework
+- **SLF4J**: Logging framework
 - **Java Collections**: ConcurrentHashMap cho in-memory database
-- **Maven**: Build tool và dependency management
 
 ### Dependencies trong pom.xml:
 ```xml
 <dependencies>
-    <!-- Không có external dependencies -->
-    <!-- Chỉ sử dụng Java standard library -->
+    <!-- Socket.IO Server for Java -->
+    <dependency>
+        <groupId>com.corundumstudio.socketio</groupId>
+        <artifactId>netty-socketio</artifactId>
+        <version>1.7.19</version>
+    </dependency>
+    
+    <!-- JSON processing -->
+    <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>2.15.2</version>
+    </dependency>
+    
+    <!-- Logging -->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-simple</artifactId>
+        <version>1.7.36</version>
+    </dependency>
 </dependencies>
 ```
 
 ## 🚀 Cách chạy chương trình
 
-### Cách 1: Chạy HTTP Server (Khuyến nghị)
+### Cách 1: Chạy Socket.IO Server (Khuyến nghị)
 
-1. **Compile project:**
+1. **Download dependencies:**
 ```bash
-mvn compile -q
+mvn dependency:resolve
 ```
 
-2. **Chạy HTTP Server:**
+2. **Chạy Socket.IO Server:**
 ```bash
-java -cp target/classes com.example.support.SimpleServer
+mvn exec:java
 ```
 
-**Server sẽ khởi động trên:** `http://localhost:8080`
+**Server sẽ khởi động trên:** `ws://localhost:9092`
 
 **Output mong đợi:**
 ```
-🚀 Customer Support Server started on http://localhost:8080
-📱 Android app can now connect to:
-   - Login: POST http://localhost:8080/api/auth/login
-   - Send Message: POST http://localhost:8080/api/chat/send
-   - Get Messages: GET http://localhost:8080/api/chat/messages?userId=customer1
-   - Get Customers: GET http://localhost:8080/api/manager/customers
-   - Health Check: GET http://localhost:8080/api/health
+🚀 Socket.IO Customer Support Server started!
+📱 Server running on: ws://localhost:9092
+📡 Android app should connect to: ws://10.0.2.2:9092
+⚡ Real-time events:
+   - login: Authenticate user
+   - send_message: Send message to recipient
+   - get_messages: Get message history
+   - get_customers: Get customer list (manager only)
+   - new_message: Receive real-time messages
 ⏹️  Press Ctrl+C to stop server
 ```
 
 ### Cách 2: Sử dụng batch file (Windows)
 
-1. **Chạy server batch:**
+1. **Chạy Socket.IO server batch:**
 ```bash
-run-server.bat
+run-socketio.bat
 ```
 
 ## 📁 Cấu trúc project
 
 ```
 src/main/java/com/example/support/
-├── SimpleServer.java             # 🚀 HTTP Server chính
+├── SocketIOServer.java           # 🚀 Socket.IO Server chính
+├── SimpleServer.java             # 📡 HTTP Server (backup)
 ├── User.java                     # Entity người dùng
 ├── ChatMessage.java              # Entity tin nhắn
 ├── UserRepository.java           # Repository quản lý user
@@ -94,149 +118,162 @@ src/main/java/com/example/support/
 └── security/                     # 📂 Security (backup structure)
 ```
 
-## 📖 API Documentation
+## 📖 Socket.IO Events Documentation
 
-### 🔐 1. Authentication API
+### 🔐 1. Authentication Events
 
-#### POST /api/auth/login
+#### Event: `login`
 Đăng nhập và tạo JWT token
 
-**Request:**
-```json
-{
-    "username": "customer1",
-    "role": "CUSTOMER"
-}
+**Emit:**
+```javascript
+socket.emit('login', {
+    username: 'customer1',
+    role: 'CUSTOMER'
+});
 ```
 
-**Response:**
-```json
-{
-    "token": "customer1:CUSTOMER:1765552631442",
-    "role": "CUSTOMER",
-    "userId": "customer1",
-    "username": "customer1"
-}
+**Listen:**
+```javascript
+socket.on('login_response', (response) => {
+    // response: {success, token, role, userId, username, error}
+});
 ```
 
 **Users có sẵn:**
 - `customer1`, `customer2`, `customer3` (role: CUSTOMER)
 - `manager` (role: MANAGER)
 
-### 💬 2. Chat API
+### 💬 2. Chat Events
 
-#### POST /api/chat/send
-Gửi tin nhắn từ customer đến manager
+#### Event: `send_message`
+Gửi tin nhắn real-time
 
-**Request:**
-```json
-{
-    "senderId": "customer1",
-    "senderName": "Customer 1",
-    "content": "Hello Manager",
-    "recipientId": "manager",
-    "role": "CUSTOMER"
-}
+**Emit:**
+```javascript
+socket.emit('send_message', {
+    senderId: 'customer1',
+    senderName: 'Customer 1',
+    content: 'Hello Manager',
+    recipientId: 'manager',
+    role: 'CUSTOMER'
+});
 ```
 
-**Response:**
-```json
-{
-    "status": "success",
-    "message": "Message sent successfully"
-}
+**Listen:**
+```javascript
+socket.on('message_response', (response) => {
+    // response: {success, message, error}
+});
 ```
 
-#### GET /api/chat/messages?userId=customer1
-Lấy danh sách tin nhắn theo user ID
+#### Event: `new_message`
+Nhận tin nhắn real-time
 
-**Response:**
-```json
-[
-    {
-        "id": "1",
-        "senderId": "customer1",
-        "senderName": "Customer 1",
-        "content": "Hello Manager",
-        "timestamp": 1765552631442,
-        "isFromCustomer": true
-    }
-]
+**Listen:**
+```javascript
+socket.on('new_message', (message) => {
+    // message: {id, senderId, senderName, content, timestamp, isFromCustomer}
+});
 ```
 
-### 👥 3. Manager API
+#### Event: `get_messages`
+Lấy lịch sử tin nhắn
 
-#### GET /api/manager/customers
-Lấy danh sách khách hàng
-
-**Response:**
-```json
-[
-    {
-        "id": "customer1",
-        "username": "customer1",
-        "role": "CUSTOMER"
-    },
-    {
-        "id": "customer2",
-        "username": "customer2",
-        "role": "CUSTOMER"
-    }
-]
+**Emit:**
+```javascript
+socket.emit('get_messages', {
+    userId: 'customer1'
+});
 ```
 
-### ❤️ 4. Health Check API
-
-#### GET /api/health
-Kiểm tra trạng thái server
-
-**Response:**
-```json
-{
-    "status": "OK",
-    "message": "Customer Support Server is running",
-    "timestamp": 1765552631442
-}
+**Listen:**
+```javascript
+socket.on('messages_response', (response) => {
+    // response: {success, messages[], error}
+});
 ```
 
-## 🧪 Test APIs với curl/PowerShell
+### 👥 3. Manager Events
+
+#### Event: `get_customers`
+Lấy danh sách khách hàng với trạng thái online
+
+**Emit:**
+```javascript
+socket.emit('get_customers', {});
+```
+
+**Listen:**
+```javascript
+socket.on('customers_response', (response) => {
+    // response: {success, customers[], error}
+    // customers: [{id, username, role, isOnline}]
+});
+```
+
+## 🧪 Test Socket.IO với Browser Console
+
+### Test Connection:
+```javascript
+// Mở browser console và test
+const socket = io('http://localhost:9092');
+
+socket.on('connect', () => {
+    console.log('🔗 Connected to Socket.IO server');
+});
+```
 
 ### Test Login:
-```bash
-# PowerShell
-$body = @{username='customer1'; role='CUSTOMER'} | ConvertTo-Json
-Invoke-RestMethod -Uri 'http://localhost:8080/api/auth/login' -Method Post -Body $body -ContentType 'application/json'
+```javascript
+socket.emit('login', {
+    username: 'customer1',
+    role: 'CUSTOMER'
+});
+
+socket.on('login_response', (response) => {
+    console.log('📤 Login response:', response);
+});
 ```
 
 ### Test Send Message:
-```bash
-# PowerShell
-$body = @{senderId='customer1'; senderName='Customer 1'; content='Hello Manager'} | ConvertTo-Json
-Invoke-RestMethod -Uri 'http://localhost:8080/api/chat/send' -Method Post -Body $body -ContentType 'application/json'
+```javascript
+socket.emit('send_message', {
+    senderId: 'customer1',
+    senderName: 'Customer 1',
+    content: 'Hello Manager',
+    recipientId: 'manager',
+    role: 'CUSTOMER'
+});
+
+socket.on('message_response', (response) => {
+    console.log('📤 Message response:', response);
+});
 ```
 
-### Test Get Messages:
-```bash
-# PowerShell
-Invoke-RestMethod -Uri 'http://localhost:8080/api/chat/messages?userId=customer1' -Method Get
-```
-
-### Test Health Check:
-```bash
-# PowerShell
-Invoke-RestMethod -Uri 'http://localhost:8080/api/health' -Method Get
+### Test Real-time Messages:
+```javascript
+socket.on('new_message', (message) => {
+    console.log('📥 New message:', message);
+});
 ```
 
 ## 📱 Android App Integration
 
-### Network Configuration cho Android:
+### Socket.IO Configuration cho Android:
 
-1. **Base URL cho emulator:**
+1. **Socket.IO URL cho emulator:**
 ```kotlin
-private const val BASE_URL = "http://10.0.2.2:8080/api/"
+private const val SOCKET_URL = "http://10.0.2.2:9092"
 ```
 
-2. **Network Security Config** (`res/xml/network_security_config.xml`):
+2. **Dependencies trong build.gradle:**
+```gradle
+implementation 'io.socket:socket.io-client:2.0.0'
+implementation 'org.json:json:20230227'
+```
+
+3. **Network Security Config** (`res/xml/network_security_config.xml`):
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
@@ -246,7 +283,7 @@ private const val BASE_URL = "http://10.0.2.2:8080/api/"
 </network-security-config>
 ```
 
-3. **AndroidManifest.xml:**
+4. **AndroidManifest.xml:**
 ```xml
 <application
     android:networkSecurityConfig="@xml/network_security_config"
@@ -254,7 +291,7 @@ private const val BASE_URL = "http://10.0.2.2:8080/api/"
 ```
 
 ### Hướng dẫn chi tiết:
-📋 Xem file **ANDROID_MESSAGE_IMPLEMENTATION_GUIDE.md** để có hướng dẫn đầy đủ implement Android app.
+📋 Xem file **ANDROID_SOCKETIO_IMPLEMENTATION_GUIDE.md** để có hướng dẫn đầy đủ implement Socket.IO Android app.
 
 ## 🔍 Troubleshooting
 
@@ -300,31 +337,28 @@ Server sẽ hiển thị logs chi tiết:
 📤 Messages response for customer1: [{"id":"1","senderId":"customer1",...}]
 ```
 
-## 🚀 Tính năng đã hoàn thành
+## 🚀 Socket.IO Tính năng đã hoàn thành
 
-- ✅ **HTTP Server**: Chạy ổn định trên port 8080
-- ✅ **Authentication**: Login với username + role
-- ✅ **Message Sending**: Gửi tin nhắn thành công
-- ✅ **Message Retrieval**: Lấy lịch sử chat
-- ✅ **Customer Management**: Quản lý danh sách customers
-- ✅ **CORS Support**: Hỗ trợ Android connectivity
-- ✅ **Error Handling**: Xử lý lỗi và validation
-- ✅ **Real-time Logging**: Logs chi tiết mọi request/response
+- ✅ **Socket.IO Server**: Chạy ổn định trên ws://localhost:9092
+- ✅ **Real-time Authentication**: Login với Socket.IO events
+- ✅ **Instant Messaging**: Tin nhắn được gửi và nhận ngay lập tức
+- ✅ **Bidirectional Communication**: Full-duplex real-time communication
+- ✅ **Message History**: Lấy lịch sử chat qua Socket.IO
+- ✅ **Online Status Tracking**: Theo dõi users online/offline
+- ✅ **Event-driven Architecture**: Sử dụng events thay vì HTTP
+- ✅ **Real-time Notifications**: Push notifications cho tin nhắn mới
+- ✅ **Connection Management**: Quản lý kết nối client
+- ✅ **Error Handling**: Xử lý lỗi real-time
 
-## 🎯 Sẵn sàng cho Android
+## 🎯 Sẵn sàng cho Android Socket.IO
 
-Backend đã hoàn toàn sẵn sàng để kết nối với Android app:
+Backend Socket.IO đã hoàn toàn sẵn sàng để kết nối với Android app:
 
-1. **Server APIs**: Tất cả endpoints hoạt động ổn định
-2. **Data Format**: JSON responses tương thích với Android
-3. **CORS**: Đã cấu hình cho cross-origin requests
-4. **Error Handling**: Trả về error messages rõ ràng
-5. **Documentation**: Có hướng dẫn chi tiết cho Android implementation
+1. **Socket.IO Events**: Tất cả events hoạt động ổn định
+2. **Real-time Communication**: Bidirectional instant messaging
+3. **JSON Data Format**: Tương thích với Android Socket.IO client
+4. **Connection Status**: Real-time connection monitoring
+5. **Event Documentation**: Có hướng dẫn chi tiết cho Android Socket.IO implementation
+6. **Online Status**: Theo dõi trạng thái online của users
+7. **Message Delivery**: Instant message delivery confirmation
 
-## 📞 Liên hệ
-
-Nếu có vấn đề hoặc câu hỏi, vui lòng tạo issue trong repository này.
-
----
-
-**🎉 Backend hoàn thành! Sẵn sàng cho Android integration!**
