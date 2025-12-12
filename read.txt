@@ -1,0 +1,31 @@
+
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/example/support/
+│   │   │       ├── common/               
+│   │   │           └── UserRole.java       
+│   │   │       ├── config/
+│   │   │           ├── WebSocketConfig.java
+│   │   │           ├── SecurityConfig.java 
+│   │   │           └── AppConfig.java
+│   │   │       ├── controller/
+│   │   │           ├── AuthController.java 
+│   │   │           ├── ChatController.java 
+│   │   │           └── ManagerController.java 
+│   │   │       ├── model/
+│   │   │           ├── entity/
+│   │   │               ├── User.java     
+│   │   │               └── ChatMessage.java
+│   │   │           └── dto/
+│   │   │               ├── LoginRequest.java
+│   │   │               ├── LoginResponse.java 
+│   │   │               └── ChatMessageDto.java
+│   │   │       ├── repository/application.properties ...
+│   │   │       ├── security/             
+│   │   │           ├── JwtTokenProvider.java
+│   │   │           └── UserDetailsServiceImpl.java
+│   │   │       └── service/
+│   │   │           ├── AuthService.java    
+│   │   │           ├── ChatService.java
+│   │   │           └── RoomService.java
