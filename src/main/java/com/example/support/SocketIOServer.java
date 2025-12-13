@@ -8,6 +8,7 @@ import com.corundumstudio.socketio.listener.DisconnectListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,18 +26,44 @@ public class SocketIOServer {
     
     public static void main(String[] args) {
         Configuration config = new Configuration();
-        config.setHostname("localhost");
+        config.setHostname("0.0.0.0"); // Listen on all interfaces
         config.setPort(9092);
-        config.setOrigin("*"); // Allow CORS for Android
+        
+        // CORS configuration for Android
+        config.setOrigin("*");
+        config.setAllowCustomRequests(true);
+        
+        // Transport configuration
+        config.setTransports(
+            com.corundumstudio.socketio.Transport.WEBSOCKET,
+            com.corundumstudio.socketio.Transport.POLLING
+        );
+        
+        // Connection settings
+        config.setPingTimeout(60000); // 60 seconds
+        config.setPingInterval(25000); // 25 seconds
+        config.setUpgradeTimeout(10000); // 10 seconds
+        config.setMaxFramePayloadLength(1024 * 1024); // 1MB
+        config.setMaxHttpContentLength(1024 * 1024); // 1MB
+        
+        // Enable detailed logging (remove if not available)
+        // config.setLogLevel(com.corundumstudio.socketio.log.LogLevel.DEBUG);
         
         final com.corundumstudio.socketio.SocketIOServer server = 
             new com.corundumstudio.socketio.SocketIOServer(config);
+        
+        // Error handling will be done in event listeners
         
         // Connection event
         server.addConnectListener(new ConnectListener() {
             @Override
             public void onConnect(SocketIOClient client) {
                 System.out.println("🔗 Client connected: " + client.getSessionId());
+                System.out.println("   Remote Address: " + client.getRemoteAddress());
+                System.out.println("   Transport: " + client.getTransport());
+                
+                // Send welcome message to confirm connection
+                client.sendEvent("connection_confirmed", "Welcome to Socket.IO server!");
             }
         });
         
@@ -45,8 +72,30 @@ public class SocketIOServer {
             @Override
             public void onDisconnect(SocketIOClient client) {
                 System.out.println("❌ Client disconnected: " + client.getSessionId());
+                System.out.println("   Reason: Connection lost or client closed");
+                
                 // Remove from userClients map
-                userClients.entrySet().removeIf(entry -> entry.getValue().equals(client));
+                String disconnectedUserId = null;
+                for (Map.Entry<String, SocketIOClient> entry : userClients.entrySet()) {
+                    if (entry.getValue().equals(client)) {
+                        disconnectedUserId = entry.getKey();
+                        break;
+                    }
+                }
+                
+                if (disconnectedUserId != null) {
+                    userClients.remove(disconnectedUserId);
+                    System.out.println("   User " + disconnectedUserId + " removed from active users");
+                }
+            }
+        });
+        
+        // Test event for debugging
+        server.addEventListener("test_connection", Object.class, new DataListener<Object>() {
+            @Override
+            public void onData(SocketIOClient client, Object data, com.corundumstudio.socketio.AckRequest ackSender) {
+                System.out.println("🧪 Test connection event received from: " + client.getSessionId());
+                client.sendEvent("test_response", "Server received your test message!");
             }
         });
         
@@ -55,19 +104,33 @@ public class SocketIOServer {
             @Override
             public void onData(SocketIOClient client, LoginData data, com.corundumstudio.socketio.AckRequest ackSender) {
                 try {
-                    System.out.println("📥 Login request: " + data.username + " as " + data.role);
+                    System.out.println("📥 Login request received:");
+                    System.out.println("   Username: " + data.username);
+                    System.out.println("   Role: " + data.role);
+                    System.out.println("   Client ID: " + client.getSessionId());
                     
+                    // Validate input data
+                    if (data.username == null || data.username.trim().isEmpty()) {
+                        throw new RuntimeException("Username is required");
+                    }
+                    
+                    if (data.role == null || data.role.trim().isEmpty()) {
+                        throw new RuntimeException("Role is required");
+                    }
+                    
+                    // Create login request
                     AuthController.LoginRequest loginRequest = new AuthController.LoginRequest();
-                    loginRequest.setUsername(data.username);
-                    loginRequest.setPassword("default");
-                    loginRequest.setRole(data.role);
+                    loginRequest.setUsername(data.username.trim());
+                    loginRequest.setPassword("default"); // Simple auth
+                    loginRequest.setRole(data.role.trim().toUpperCase());
                     
+                    // Authenticate user
                     AuthController.AuthResponse response = authController.login(loginRequest);
                     
-                    // Lưu client connection
+                    // Store client connection with user mapping
                     userClients.put(response.getUserId(), client);
                     
-                    // Gửi response về client
+                    // Create success response
                     LoginResponse loginResponse = new LoginResponse();
                     loginResponse.success = true;
                     loginResponse.token = response.getToken();
@@ -75,16 +138,29 @@ public class SocketIOServer {
                     loginResponse.userId = response.getUserId();
                     loginResponse.username = response.getUsername();
                     
+                    // Send response to client
                     client.sendEvent("login_response", loginResponse);
-                    System.out.println("📤 Login successful for: " + data.username);
+                    
+                    System.out.println("✅ Login successful:");
+                    System.out.println("   User ID: " + response.getUserId());
+                    System.out.println("   Username: " + response.getUsername());
+                    System.out.println("   Role: " + response.getRole());
+                    System.out.println("   Token: " + response.getToken());
+                    System.out.println("   Active users: " + userClients.size());
                     
                 } catch (Exception e) {
-                    System.err.println("❌ Login error: " + e.getMessage());
+                    System.err.println("❌ Login error:");
+                    System.err.println("   Message: " + e.getMessage());
+                    System.err.println("   Username: " + (data != null ? data.username : "null"));
+                    System.err.println("   Role: " + (data != null ? data.role : "null"));
+                    e.printStackTrace();
                     
+                    // Create error response
                     LoginResponse errorResponse = new LoginResponse();
                     errorResponse.success = false;
-                    errorResponse.error = e.getMessage();
+                    errorResponse.error = "Login failed: " + e.getMessage();
                     
+                    // Send error response to client
                     client.sendEvent("login_response", errorResponse);
                 }
             }
@@ -228,14 +304,25 @@ public class SocketIOServer {
         server.start();
         
         System.out.println("🚀 Socket.IO Customer Support Server started!");
-        System.out.println("📱 Server running on: ws://localhost:9092");
-        System.out.println("📡 Android app should connect to: ws://10.0.2.2:9092");
-        System.out.println("⚡ Real-time events:");
+        System.out.println("📱 Server running on: ws://0.0.0.0:9092");
+        System.out.println("📡 Local access: ws://localhost:9092");
+        System.out.println("📱 Android emulator: ws://10.0.2.2:9092");
+        System.out.println("🌐 Network access: ws://[your-ip]:9092");
+        System.out.println();
+        System.out.println("⚡ Socket.IO Configuration:");
+        System.out.println("   - Transports: WebSocket, Polling");
+        System.out.println("   - Ping Timeout: 60s");
+        System.out.println("   - Ping Interval: 25s");
+        System.out.println("   - CORS: Enabled for all origins");
+        System.out.println();
+        System.out.println("📡 Real-time events:");
+        System.out.println("   - connection_confirmed: Server welcome message");
         System.out.println("   - login: Authenticate user");
         System.out.println("   - send_message: Send message to recipient");
         System.out.println("   - get_messages: Get message history");
         System.out.println("   - get_customers: Get customer list (manager only)");
         System.out.println("   - new_message: Receive real-time messages");
+        System.out.println();
         System.out.println("⏹️  Press Ctrl+C to stop server");
         
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

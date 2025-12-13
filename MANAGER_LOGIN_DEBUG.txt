@@ -1,0 +1,185 @@
+========================================
+MANAGER LOGIN DEBUG GUIDE
+========================================
+
+VẤN ĐỀ HIỆN TẠI:
+- Server log cho thấy manager login THÀNH CÔNG
+- Nhưng Android app báo lỗi không thể đăng nhập
+- Có thể là vấn đề client-side
+
+========================================
+DEBUG STEPS
+========================================
+
+1. KIỂM TRA SERVER (HOÀN THÀNH):
+   ✅ Manager user tồn tại: manager/123456/MANAGER
+   ✅ Password validation đã sửa: user.password.equals(loginData.password)
+   ✅ Server log: "✅ LOGIN SUCCESS: manager (MANAGER)"
+
+2. KIỂM TRA ANDROID CLIENT:
+
+A. KIỂM TRA LOGIN REQUEST FORMAT:
+```java
+// Đảm bảo format đúng
+JSONObject loginData = new JSONObject();
+loginData.put("username", "manager");        // CHÍNH XÁC
+loginData.put("password", "123456");         // CHÍNH XÁC  
+loginData.put("role", "MANAGER");            // CHÍNH XÁC (viết hoa)
+
+socket.emit("login", loginData);
+```
+
+B. KIỂM TRA RESPONSE HANDLER:
+```java
+socket.on("login_response", args -> {
+    try {
+        JSONObject response = (JSONObject) args[0];
+        
+        // DEBUG: Log toàn bộ response
+        Log.d("LoginDebug", "Full response: " + response.toString());
+        
+        boolean success = response.getBoolean("success");
+        Log.d("LoginDebug", "Success: " + success);
+        
+        if (success) {
+            String username = response.getString("username");
+            String role = response.getString("role");
+            String token = response.getString("token");
+            String message = response.getString("message");
+            
+            Log.d("LoginDebug", "Username: " + username);
+            Log.d("LoginDebug", "Role: " + role);
+            Log.d("LoginDebug", "Token: " + token);
+            Log.d("LoginDebug", "Message: " + message);
+            
+            // XỬ LÝ THÀNH CÔNG
+            runOnUiThread(() -> {
+                // Update UI
+                Toast.makeText(this, "Manager login successful!", Toast.LENGTH_SHORT).show();
+            });
+            
+        } else {
+            String error = response.optString("error", "Unknown error");
+            Log.e("LoginDebug", "Login failed: " + error);
+            
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Login failed: " + error, Toast.LENGTH_SHORT).show();
+            });
+        }
+        
+    } catch (JSONException e) {
+        Log.e("LoginDebug", "JSON parsing error: " + e.getMessage());
+    }
+});
+```
+
+C. KIỂM TRA CONNECTION STABILITY:
+```java
+socket.on(Socket.EVENT_CONNECT, args -> {
+    Log.d("Socket", "✅ Connected - ID: " + socket.id());
+});
+
+socket.on(Socket.EVENT_DISCONNECT, args -> {
+    Log.w("Socket", "❌ Disconnected: " + args[0]);
+});
+
+socket.on(Socket.EVENT_CONNECT_ERROR, args -> {
+    Log.e("Socket", "🚫 Connection error: " + args[0]);
+});
+```
+
+========================================
+TEST CASES
+========================================
+
+1. TEST VỚI BROWSER:
+   - Mở file: test-manager-login.html
+   - Click "Test Manager Login"
+   - Kiểm tra có nhận được response không
+
+2. TEST VỚI ANDROID:
+   - Thêm debug logs như trên
+   - Login với manager/123456
+   - Kiểm tra logcat output
+
+========================================
+EXPECTED SERVER LOG
+========================================
+
+Khi manager login thành công:
+```
+🔑 LOGIN ATTEMPT:
+   Username: manager
+   Password: 123456
+   Role: MANAGER
+   Found user: manager/123456/MANAGER
+✅ LOGIN SUCCESS: manager (MANAGER)
+```
+
+========================================
+EXPECTED ANDROID LOG
+========================================
+
+Khi nhận response thành công:
+```
+D/LoginDebug: Full response: {"success":true,"username":"manager","role":"MANAGER","token":"token_manager_1234567890","message":"Login successful"}
+D/LoginDebug: Success: true
+D/LoginDebug: Username: manager
+D/LoginDebug: Role: MANAGER
+D/LoginDebug: Token: token_manager_1234567890
+D/LoginDebug: Message: Login successful
+```
+
+========================================
+COMMON ISSUES
+========================================
+
+1. CASE SENSITIVITY:
+   - Username: "manager" (lowercase)
+   - Role: "MANAGER" (uppercase)
+
+2. JSON PARSING:
+   - Đảm bảo cast (JSONObject) args[0] đúng
+   - Kiểm tra key names chính xác
+
+3. UI THREAD:
+   - Phải dùng runOnUiThread() cho UI updates
+   - Socket events chạy trên background thread
+
+4. CONNECTION TIMING:
+   - Đảm bảo socket.connected() = true trước khi emit
+   - Thêm timeout cho login request
+
+========================================
+QUICK FIX CODE
+========================================
+
+```java
+public void loginAsManager() {
+    if (!socket.connected()) {
+        Log.e("Login", "Socket not connected!");
+        return;
+    }
+    
+    try {
+        JSONObject loginData = new JSONObject();
+        loginData.put("username", "manager");
+        loginData.put("password", "123456");
+        loginData.put("role", "MANAGER");
+        
+        Log.d("Login", "Sending manager login: " + loginData.toString());
+        socket.emit("login", loginData);
+        
+        // Timeout handler
+        Handler handler = new Handler();
+        handler.postDelayed(() -> {
+            Log.w("Login", "Login timeout - no response received");
+        }, 10000); // 10 second timeout
+        
+    } catch (JSONException e) {
+        Log.e("Login", "JSON creation error: " + e.getMessage());
+    }
+}
+```
+
+========================================

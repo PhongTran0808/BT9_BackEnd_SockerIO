@@ -1,0 +1,252 @@
+========================================
+ANDROID SOCKET.IO INTEGRATION GUIDE
+========================================
+
+SERVER INFO:
+- URL: http://10.0.2.2:9092
+- Protocol: Socket.IO
+- Port: 9092
+
+TEST USERS (ALL PASSWORD: 123456):
+- customer1/123456 (CUSTOMER)
+- customer2/123456 (CUSTOMER) 
+- customer3/123456 (CUSTOMER)
+- manager/123456 (MANAGER) ✅ FIXED
+- admin/123456 (MANAGER) ✅ FIXED
+
+========================================
+ANDROID CODE IMPLEMENTATION
+========================================
+
+1. DEPENDENCIES (build.gradle):
+implementation 'io.socket:socket.io-client:2.0.0'
+
+2. SOCKET CONNECTION:
+```java
+import io.socket.client.IO;
+import io.socket.client.Socket;
+import org.json.JSONObject;
+import org.json.JSONException;
+
+public class SocketManager {
+    private Socket socket;
+    private static final String SERVER_URL = "http://10.0.2.2:9092";
+    
+    public void connect() {
+        try {
+            IO.Options opts = new IO.Options();
+            opts.timeout = 20000;
+            opts.reconnection = true;
+            
+            socket = IO.socket(SERVER_URL, opts);
+            
+            // Connection events
+            socket.on(Socket.EVENT_CONNECT, args -> {
+                Log.d("Socket", "✅ Connected to server");
+            });
+            
+            socket.on("connected", args -> {
+                Log.d("Socket", "🎉 Server welcome: " + args[0]);
+            });
+            
+            socket.on(Socket.EVENT_DISCONNECT, args -> {
+                Log.d("Socket", "❌ Disconnected: " + args[0]);
+            });
+            
+            socket.connect();
+            
+        } catch (Exception e) {
+            Log.e("Socket", "Connection error: " + e.getMessage());
+        }
+    }
+}
+```
+
+3. LOGIN IMPLEMENTATION:
+```java
+public void login(String username, String password, String role) {
+    try {
+        JSONObject loginData = new JSONObject();
+        loginData.put("username", username);
+        loginData.put("password", password);
+        loginData.put("role", role);
+        
+        // Listen for login response
+        socket.on("login_response", args -> {
+            try {
+                JSONObject response = (JSONObject) args[0];
+                boolean success = response.getBoolean("success");
+                
+                if (success) {
+                    String token = response.getString("token");
+                    String userRole = response.getString("role");
+                    String message = response.getString("message");
+                    
+                    Log.d("Login", "✅ Login successful!");
+                    Log.d("Login", "Token: " + token);
+                    Log.d("Login", "Role: " + userRole);
+                    
+                    // Handle successful login
+                    onLoginSuccess(token, userRole);
+                    
+                } else {
+                    String error = response.getString("error");
+                    Log.e("Login", "❌ Login failed: " + error);
+                    
+                    // Handle login failure
+                    onLoginFailure(error);
+                }
+                
+            } catch (JSONException e) {
+                Log.e("Login", "JSON parsing error: " + e.getMessage());
+            }
+        });
+        
+        // Send login request
+        socket.emit("login", loginData);
+        Log.d("Login", "🔑 Login request sent for: " + username);
+        
+    } catch (JSONException e) {
+        Log.e("Login", "Login data creation error: " + e.getMessage());
+    }
+}
+```
+
+4. CHAT IMPLEMENTATION:
+```java
+public void sendMessage(String content, String roomId) {
+    try {
+        JSONObject messageData = new JSONObject();
+        messageData.put("content", content);
+        messageData.put("roomId", roomId != null ? roomId : "general");
+        
+        socket.emit("send_message", messageData);
+        Log.d("Chat", "📤 Message sent: " + content);
+        
+    } catch (JSONException e) {
+        Log.e("Chat", "Message creation error: " + e.getMessage());
+    }
+}
+
+public void setupMessageListeners() {
+    // Listen for new messages
+    socket.on("new_message", args -> {
+        try {
+            JSONObject message = (JSONObject) args[0];
+            
+            long id = message.getLong("id");
+            String content = message.getString("content");
+            String senderUsername = message.getString("senderUsername");
+            String senderRole = message.getString("senderRole");
+            long timestamp = message.getLong("timestamp");
+            String roomId = message.getString("roomId");
+            
+            Log.d("Chat", "📥 New message from " + senderUsername + ": " + content);
+            
+            // Handle new message in UI
+            onNewMessage(id, content, senderUsername, senderRole, timestamp, roomId);
+            
+        } catch (JSONException e) {
+            Log.e("Chat", "Message parsing error: " + e.getMessage());
+        }
+    });
+    
+    // Listen for message sent confirmation
+    socket.on("message_sent", args -> {
+        Log.d("Chat", "✅ Message delivered: " + args[0]);
+    });
+}
+
+public void getMessages() {
+    socket.emit("get_messages", new JSONObject());
+    
+    socket.on("messages_list", args -> {
+        // Handle messages list
+        Log.d("Chat", "📋 Received messages list");
+    });
+}
+```
+
+5. COMPLETE ACTIVITY EXAMPLE:
+```java
+public class MainActivity extends AppCompatActivity {
+    private SocketManager socketManager;
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        
+        socketManager = new SocketManager();
+        socketManager.connect();
+        socketManager.setupMessageListeners();
+    }
+    
+    private void performLogin() {
+        String username = "customer1";
+        String password = "123456";
+        String role = "CUSTOMER";
+        
+        socketManager.login(username, password, role);
+    }
+    
+    private void onLoginSuccess(String token, String role) {
+        runOnUiThread(() -> {
+            // Update UI for successful login
+            Toast.makeText(this, "Login successful!", Toast.LENGTH_SHORT).show();
+            // Navigate to chat screen
+        });
+    }
+    
+    private void onLoginFailure(String error) {
+        runOnUiThread(() -> {
+            Toast.makeText(this, "Login failed: " + error, Toast.LENGTH_SHORT).show();
+        });
+    }
+    
+    private void onNewMessage(long id, String content, String sender, String role, long timestamp, String roomId) {
+        runOnUiThread(() -> {
+            // Update chat UI with new message
+        });
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (socketManager != null) {
+            socketManager.disconnect();
+        }
+    }
+}
+```
+
+========================================
+TESTING STEPS:
+========================================
+
+1. Start backend server: mvn exec:java
+2. Run Android app
+3. Test login with: customer1/123456
+4. Send test message
+5. Check server logs for confirmation
+
+========================================
+SERVER EVENTS:
+========================================
+
+SEND TO SERVER:
+- "login" -> {username, password, role}
+- "send_message" -> {content, roomId}
+- "get_messages" -> {}
+- "ping" -> {}
+
+RECEIVE FROM SERVER:
+- "connected" -> welcome message
+- "login_response" -> {success, username, role, token, message, error}
+- "new_message" -> {id, content, senderUsername, senderRole, timestamp, roomId}
+- "message_sent" -> confirmation
+- "messages_list" -> array of messages
+- "pong" -> server alive confirmation
+- "error" -> error message
+
+========================================

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket.IO Login Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Socket.IO Login & Chat Test</h1>
+    
+    <div>
+        <h3>Login</h3>
+        <input type="text" id="username" placeholder="Username" value="customer1">
+        <input type="password" id="password" placeholder="Password" value="123456">
+        <select id="role">
+            <option value="CUSTOMER">Customer</option>
+            <option value="MANAGER">Manager</option>
+        </select>
+        <button onclick="login()">Login</button>
+    </div>
+    
+    <div>
+        <h3>Chat</h3>
+        <input type="text" id="message" placeholder="Type message...">
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="getMessages()">Get Messages</button>
+    </div>
+    
+    <div id="log" style="border: 1px solid #ccc; height: 400px; overflow-y: scroll; padding: 10px; margin-top: 10px;"></div>
+    
+    <script>
+        let socket;
+        let isLoggedIn = false;
+        
+        function addLog(message) {
+            const log = document.getElementById('log');
+            log.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        // Connect to server
+        addLog('🔄 Connecting to server...');
+        socket = io('http://localhost:9092');
+        
+        socket.on('connect', () => {
+            addLog('Connected! ID: ' + socket.id);
+        });
+        
+        socket.on('connected', (data) => {
+            addLog('Server: ' + data);
+        });
+        
+        socket.on('login_response', (data) => {
+            if (data.success) {
+                addLog('Login Success: ' + data.username + ' (' + data.role + ')');
+                addLog('Token: ' + data.token);
+                isLoggedIn = true;
+            } else {
+                addLog('Login Failed: ' + data.error);
+                isLoggedIn = false;
+            }
+        });
+        
+        socket.on('new_message', (data) => {
+            addLog('📥 Message from ' + data.senderUsername + ' (' + data.senderRole + '): ' + data.content);
+        });
+        
+        socket.on('message_sent', (data) => {
+            addLog('✅ Message sent: ' + data);
+        });
+        
+        socket.on('messages_list', (data) => {
+            addLog('📋 Messages count: ' + data.length);
+            data.forEach(msg => {
+                addLog('📜 ' + msg.senderUsername + ': ' + msg.content);
+            });
+        });
+        
+        socket.on('error', (data) => {
+            addLog('🚫 Error: ' + data);
+        });
+        
+        socket.on('disconnect', (reason) => {
+            addLog('❌ Disconnected: ' + reason);
+            isLoggedIn = false;
+        });
+        
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+            
+            addLog('🔑 Logging in as: ' + username);
+            socket.emit('login', {
+                username: username,
+                password: password,
+                role: role
+            });
+        }
+        
+        function sendMessage() {
+            if (!isLoggedIn) {
+                addLog('❌ Please login first!');
+                return;
+            }
+            
+            const message = document.getElementById('message').value;
+            if (!message) return;
+            
+            addLog('📤 Sending: ' + message);
+            socket.emit('send_message', {
+                content: message,
+                roomId: 'general'
+            });
+            
+            document.getElementById('message').value = '';
+        }
+        
+        function getMessages() {
+            if (!isLoggedIn) {
+                addLog('❌ Please login first!');
+                return;
+            }
+            
+            addLog('📋 Getting messages...');
+            socket.emit('get_messages', {});
+        }
+        
+        // Enter key support
+        document.getElementById('message').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
